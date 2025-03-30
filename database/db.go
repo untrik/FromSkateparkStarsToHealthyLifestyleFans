@@ -11,8 +11,9 @@ import (
 var DB *gorm.DB
 
 func InitDB() {
+	var err error
 	dsn := "host=localhost user=untrick  password=4thtgeirf_2001 port=5432 connect_timeout=60 dbname=dbFromSkateToZOH sslmode=disable"
-	DB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Print("Проблема с подключением к базе данных:", err)
 		return
