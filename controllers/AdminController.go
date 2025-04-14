@@ -113,7 +113,7 @@ func CreateEvent(w http.ResponseWriter, r *http.Request) {
 	IdUser, ok := r.Context().Value(middleware.UserIDKey).(uint)
 	if !ok {
 		log.Print("conversion error")
-		http.Error(w, "conversion errorr", http.StatusBadRequest)
+		http.Error(w, "conversion error", http.StatusBadRequest)
 		return
 	}
 	var request struct {
@@ -169,13 +169,13 @@ func AddReward(w http.ResponseWriter, r *http.Request) {
 	IdStudent, err := strconv.Atoi(vars["id_student"])
 	if err != nil {
 		log.Print("conversion error")
-		http.Error(w, "conversion errorr", http.StatusBadRequest)
+		http.Error(w, "conversion error", http.StatusBadRequest)
 		return
 	}
 	IdEvent, err := strconv.Atoi(vars["id_event"])
 	if err != nil {
 		log.Print("conversion error")
-		http.Error(w, "conversion errorr", http.StatusBadRequest)
+		http.Error(w, "conversion error", http.StatusBadRequest)
 		return
 	}
 	var student models.Student
@@ -232,4 +232,50 @@ func AddReward(w http.ResponseWriter, r *http.Request) {
 	database.DB.Model(&student).Where("student_id", IdStudent).Update("points", points)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(reward)
+}
+func ChangeStatusStudent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		log.Print("Method not allowed")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var request struct {
+		Status models.StatusStudent `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Print("Invalid JSON", err)
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	switch request.Status {
+	case models.StatusRegistered, models.StatusApproved, models.StatusCancelled:
+
+	default:
+		log.Print("Invalid status")
+		http.Error(w, "Invalid status", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+	vars := mux.Vars(r)
+	StudentId, err := strconv.Atoi(vars["id_student"])
+	if err != nil {
+		log.Print("conversion error", err)
+		http.Error(w, "conversion error"+err.Error(), http.StatusBadRequest)
+		return
+	}
+	EventID, err := strconv.Atoi(vars["id_event"])
+	if err != nil {
+		log.Print("conversion error", err)
+		http.Error(w, "conversion error"+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var eventParticipant models.EventParticipant
+	if err := database.DB.Model(&eventParticipant).Where("student_id = ?", StudentId).Where("event_id = ?", EventID).Update("status", request.Status).Error; err != nil {
+		log.Print("Invalid credentials", err)
+		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
+	}
+	eventParticipant.EventID = uint(EventID)
+	eventParticipant.StudentID = uint(StudentId)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(eventParticipant)
 }

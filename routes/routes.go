@@ -14,5 +14,6 @@ func SetupRouter() mux.Router {
 	r.HandleFunc("/event/add", middleware.JWTMiddlewareAdmin(controllers.CreateEvent)).Methods("POST")
 	r.HandleFunc("/event/{id_event}/student", middleware.JWTMiddlewareStudent(controllers.RegistrationForTheEvent)).Methods("POST")
 	r.HandleFunc("/reward/event/{id_event}/student/{id_student}", middleware.JWTMiddlewareAdmin(controllers.AddReward)).Methods("POST")
+	r.HandleFunc("/event/{id_event}/status/student/{id_student}/change", middleware.JWTMiddlewareAdmin(controllers.ChangeStatusStudent)).Methods("PUT")
 	return *r
 }
