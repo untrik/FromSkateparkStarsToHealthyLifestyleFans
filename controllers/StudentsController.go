@@ -2,23 +2,28 @@ package controllers
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/untrik/FromSkateToZOH/database"
+	"github.com/untrik/FromSkateToZOH/middleware"
 	"github.com/untrik/FromSkateToZOH/models"
-	"golang.org/x/crypto/bcrypt"
 )
 
-func Register(w http.ResponseWriter, r *http.Request) {
+func CreateStudent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		log.Print("Method not allowed")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	var request struct {
-		models.Student
+		Username string `json:"username"`
+		Name     string `json:"name"`
+		LastName string `json:"last_name"`
+		Faculty  string `json:"faculty"`
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -28,7 +33,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	if request.Name == "" || request.LastName == "" || request.Username == "" || request.Faculty == "" || request.Password == "" {
+	if request.Username == "" || request.Password == "" || request.Name == "" || request.LastName == "" || request.Faculty == "" {
 		log.Print("Missing request fields")
 		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
@@ -39,72 +44,79 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Password hashing failed: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	user := models.Student{
+	user := models.User{
 		Username:     request.Username,
-		Name:         request.Name,
-		LastName:     request.LastName,
-		Faculty:      request.Faculty,
 		PasswordHash: hashedPassword,
 	}
-
-	fmt.Println(user)
+	var existingUser models.User
+	if err := database.DB.Where("username = ?", request.Username).First(&existingUser).Error; err == nil {
+		log.Print("Username already exists")
+		http.Error(w, "Username already exists", http.StatusConflict)
+		return
+	}
 	if err = database.DB.Create(&user).Error; err != nil {
 		log.Print("database creation user error", err)
 		http.Error(w, "database creation user error", http.StatusBadRequest)
+		return
+	}
+	student := models.Student{
+		UserID:   user.ID,
+		Name:     request.Name,
+		LastName: request.LastName,
+		Faculty:  request.Faculty,
+	}
+	if err = database.DB.Create(&student).Error; err != nil {
+		log.Print("database creation student error", err)
+		http.Error(w, "database creation student error", http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
 
 	json.NewEncoder(w).Encode(user)
 }
-func Login(w http.ResponseWriter, r *http.Request) {
+func RegistrationForTheEvent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		log.Print("Method not allowed")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var request struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		log.Print("Invalid JSON", err)
-		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+	IdStudent, ok := r.Context().Value(middleware.UserIDKey).(uint)
+	if !ok {
+		log.Print("conversion error")
+		http.Error(w, "conversion errorr", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
-	if request.Username == "" || request.Password == "" {
-		log.Print("Missing request fields")
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
+	vars := mux.Vars(r)
+	IdEvent, err := strconv.Atoi(vars["id_event"])
+	if err != nil {
+		log.Print("conversion error")
+		http.Error(w, "conversion errorr", http.StatusBadRequest)
 		return
 	}
-	var user models.Student
-	if err := database.DB.Where("username = ?", request.Username).First(&user).Error; err != nil {
-		log.Print("No user in db", err)
-		http.Error(w, "No user in db: "+err.Error(), http.StatusBadRequest)
+	var student models.Student
+	if err = database.DB.Where("user_id = ?", IdStudent).First(&student).Error; err != nil {
+		log.Print("Invalid credentials", err)
+		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
 		return
 	}
-	if unHashing(user.PasswordHash, request.Password) {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(user)
-	} else {
-		log.Print("invalid password")
-		http.Error(w, "invalid password", http.StatusBadRequest)
+	var event models.Event
+	if err = database.DB.Where("event_id = ?", IdEvent).First(&event).Error; err != nil {
+		log.Print("Invalid credentials", err)
+		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
 		return
 	}
 
-}
-func unHashing(hashedPassword, password string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
-	return err == nil
-}
-func hashing(password string) (string, error) {
-	if password == "" {
-		return "", fmt.Errorf("password is nil")
+	eventParticipant := models.EventParticipant{
+		EventID:   uint(IdEvent),
+		StudentID: student.StudentId,
 	}
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
+	if err = database.DB.Create(&eventParticipant).Error; err != nil {
+		log.Print("database registration student error", err)
+		http.Error(w, "database registration student error", http.StatusBadRequest)
+		return
 	}
-	return string(passwordHash), nil
+	w.WriteHeader(http.StatusCreated)
+
+	json.NewEncoder(w).Encode(eventParticipant)
+
 }

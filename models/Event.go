@@ -10,4 +10,5 @@ type Event struct {
 	Participants []*Student `json:"participants" gorm:"many2many:event_participants;"`
 	Reward       []Reward   `json:"rewards" gorm:"foreignKey:EventID"`
 	Description  string     `json:"description"`
+	AdminId      uint       `json:"admin_id" gorm:"not null"`
 }
