@@ -115,8 +115,17 @@ func RegistrationForTheEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database registration student error", http.StatusBadRequest)
 		return
 	}
+	type RegistrationResponse struct {
+		EventID   uint                 `json:"event_id"`
+		StudentID uint                 `json:"student_id"`
+		Status    models.StatusStudent `json:"status"`
+	}
+	response := RegistrationResponse{
+		EventID:   eventParticipant.EventID,
+		StudentID: eventParticipant.StudentID,
+		Status:    eventParticipant.Status,
+	}
 	w.WriteHeader(http.StatusCreated)
 
-	json.NewEncoder(w).Encode(eventParticipant)
-
+	json.NewEncoder(w).Encode(response)
 }

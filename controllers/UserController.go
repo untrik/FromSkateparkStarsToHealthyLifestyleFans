@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/untrik/FromSkateToZOH/database"
 	"github.com/untrik/FromSkateToZOH/middleware"
@@ -61,4 +62,19 @@ func Login(w http.ResponseWriter, r *http.Request) {
 func unHashing(hashedPassword, password string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 	return err == nil
+}
+func GetAllActiveEvent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		log.Print("Method not allowed")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var events []models.Event
+	if err := database.DB.Where("date > ?", time.Now()).Find(&events).Error; err != nil {
+		log.Print("Invalid credentials", err)
+		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(events)
 }

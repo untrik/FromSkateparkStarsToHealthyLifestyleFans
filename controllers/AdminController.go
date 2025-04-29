@@ -156,8 +156,23 @@ func CreateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database creation event error", http.StatusBadRequest)
 		return
 	}
+	type eventResponse struct {
+		EventId uint   `json:"event_id"`
+		Title   string `json:"title"`
+
+		Date        time.Time `json:"date"`
+		Location    string    `json:"location"`
+		Description string    `json:"description"`
+	}
+	response := eventResponse{
+		EventId:     event.EventId,
+		Title:       event.Title,
+		Date:        event.Date,
+		Location:    event.Location,
+		Description: event.Description,
+	}
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(event)
+	json.NewEncoder(w).Encode(response)
 }
 func AddReward(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -273,9 +288,127 @@ func ChangeStatusStudent(w http.ResponseWriter, r *http.Request) {
 	if err := database.DB.Model(&eventParticipant).Where("student_id = ?", StudentId).Where("event_id = ?", EventID).Update("status", request.Status).Error; err != nil {
 		log.Print("Invalid credentials", err)
 		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
+		return
 	}
 	eventParticipant.EventID = uint(EventID)
 	eventParticipant.StudentID = uint(StudentId)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(eventParticipant)
+}
+func DeleteEvent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		log.Print("Method not allowed")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	vars := mux.Vars(r)
+	eventId, err := strconv.Atoi(vars["id_event"])
+	if err != nil {
+		log.Print("conversion error", err)
+		http.Error(w, "conversion error"+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var event models.Event
+	if err := database.DB.Where("event_id = ? AND date > ?", eventId, time.Now()).Delete(&event).Error; err != nil {
+		log.Print("Invalid credentials", err)
+		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	var eventParticipants models.EventParticipant
+	if err := database.DB.Where("event_id = ?", eventId).Delete(&eventParticipants).Error; err != nil {
+		log.Print("Invalid credentials", err)
+		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+func AddProduct(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		log.Print("Method not allowed")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var request struct {
+		Price       uint   `json:"price"`
+		Name        string `json:"name" `
+		Description string `json:"description"`
+		ImageURL    string `json:"image_URL"`
+		Quantity    uint   `json:"quantity"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Print("Invalid JSON", err)
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+	if request.ImageURL == "" || request.Name == "" || request.Price <= 0 {
+		log.Print("Missing request fields")
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		return
+	}
+	product := models.Product{
+		Price:       request.Price,
+		Name:        request.Name,
+		Description: request.Description,
+		ImageURL:    request.ImageURL,
+		Quantity:    request.Quantity,
+	}
+	rez := database.DB.Create(&product)
+	if rez.Error != nil {
+		log.Print("Create product Error")
+		http.Error(w, "Create product Error", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(product)
+}
+func GetAllParticipants(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		log.Print("Method not allowed")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var eventParticipants []models.EventParticipant
+	idEvent, err := strconv.Atoi(mux.Vars(r)["id_event"])
+	if err != nil {
+		log.Print("conversion error", err)
+		http.Error(w, "conversion error"+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := database.DB.Preload("Student").Where("event_id = ?", idEvent).Find(&eventParticipants).Error; err != nil {
+		log.Print("Invalid credentials", err)
+		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	type responseParticipants struct {
+		EventID uint `json:"id"`
+		Student struct {
+			StudentId uint                 `json:"student_id"`
+			Name      string               `json:"name"`
+			LastName  string               `json:"last_name"`
+			Status    models.StatusStudent `json:"status"`
+			Faculty   string               `json:"faculty"`
+		} `json:"student"`
+	}
+	var response []responseParticipants
+	for _, participants := range eventParticipants {
+		response = append(response, responseParticipants{
+			EventID: participants.EventID,
+			Student: struct {
+				StudentId uint                 `json:"student_id"`
+				Name      string               `json:"name"`
+				LastName  string               `json:"last_name"`
+				Status    models.StatusStudent `json:"status"`
+				Faculty   string               `json:"faculty"`
+			}{
+				StudentId: participants.StudentID,
+				Name:      participants.Student.Name,
+				LastName:  participants.Student.LastName,
+				Status:    participants.Status,
+				Faculty:   participants.Student.Faculty,
+			},
+		})
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
