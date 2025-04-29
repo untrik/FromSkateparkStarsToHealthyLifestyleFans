@@ -98,8 +98,56 @@ func AddOrder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error update student: "+err.Error(), http.StatusNotFound)
 		return
 	}
+	type orderResponse struct {
+		OrderId  uint `json:"order_id"`
+		Quantity uint `json:"quantity"`
+		Student  struct {
+			StudentId uint   `json:"id"`
+			Name      string `json:"name"`
+			LastName  string `json:"last_name"`
+			Faculty   string `json:"faculty"`
+			Points    uint   `json:"points"`
+		}
+		Product struct {
+			ProductId   uint   `json:"product_id"`
+			Price       uint   `json:"price"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Quantity    uint   `json:"quantity"`
+		}
+	}
+	response := orderResponse{
+		OrderId:  order.OrderId,
+		Quantity: order.Quantity,
+		Student: struct {
+			StudentId uint   `json:"id"`
+			Name      string `json:"name"`
+			LastName  string `json:"last_name"`
+			Faculty   string `json:"faculty"`
+			Points    uint   `json:"points"`
+		}{
+			StudentId: student.StudentId,
+			Name:      student.Name,
+			LastName:  student.LastName,
+			Faculty:   student.Faculty,
+			Points:    student.Points,
+		},
+		Product: struct {
+			ProductId   uint   `json:"product_id"`
+			Price       uint   `json:"price"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Quantity    uint   `json:"quantity"`
+		}{
+			ProductId:   product.ProductId,
+			Price:       product.Price,
+			Name:        product.Name,
+			Description: product.Description,
+			Quantity:    product.Quantity,
+		},
+	}
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(product)
+	json.NewEncoder(w).Encode(response)
 
 }
 func GetAllOrders(w http.ResponseWriter, r *http.Request) {
@@ -161,44 +209,58 @@ func GetAllOrders(w http.ResponseWriter, r *http.Request) {
 }
 func ProductUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
-		log.Print("Method not allowed")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var request struct {
-		Price       uint   `json:"price"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Quantity    uint   `json:"quantity"`
+
+	var req struct {
+		Price       *uint   `json:"price"`
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		Quantity    *uint   `json:"quantity"`
 	}
-	if request.Name == "" || request.Price <= 0 {
-		log.Print("Missing request fields")
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
-		return
-	}
-	idProduct, err := strconv.Atoi(mux.Vars(r)["id_product"])
-	if err != nil {
-		log.Print("conversion error")
-		http.Error(w, "conversion errorr", http.StatusBadRequest)
-		return
-	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		log.Print("Invalid JSON", err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	r.Body.Close()
-	var product models.Product
-	if err := database.DB.Where("product_id = ?", idProduct).First(&product).Error; err != nil {
-		log.Print("Invalid credentials", err)
-		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
+	defer r.Body.Close()
+
+	idProduct, err := strconv.Atoi(mux.Vars(r)["id_product"])
+	if err != nil {
+		http.Error(w, "Invalid product ID", http.StatusBadRequest)
 		return
 	}
-	database.DB.Model(&product).Updates(map[string]interface{}{
-		"Price":       request.Price,
-		"Name":        request.Name,
-		"Description": request.Description,
-		"Quantity":    request.Quantity})
+
+	var product models.Product
+	if err := database.DB.First(&product, idProduct).Error; err != nil {
+		http.Error(w, "Product not found", http.StatusNotFound)
+		return
+	}
+
+	updates := make(map[string]interface{})
+	if req.Price != nil {
+		updates["price"] = *req.Price
+	}
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	if req.Quantity != nil {
+		updates["quantity"] = *req.Quantity
+	}
+
+	if len(updates) == 0 {
+		http.Error(w, "No fields to update", http.StatusBadRequest)
+		return
+	}
+
+	if err := database.DB.Model(&product).Updates(updates).Error; err != nil {
+		http.Error(w, "Failed to update: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(product)
 }
@@ -220,7 +282,7 @@ func UpdateStatusProduct(w http.ResponseWriter, r *http.Request) {
 		isDeleted = true
 	}
 	database.DB.Model(&product).Updates(map[string]interface{}{
-		"isDeleted": isDeleted})
+		"is_deleted": isDeleted})
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(product)
 }

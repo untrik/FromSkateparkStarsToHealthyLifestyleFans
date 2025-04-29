@@ -75,6 +75,23 @@ func GetAllActiveEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid credentials: "+err.Error(), http.StatusNotFound)
 		return
 	}
+	type ResponseEvent struct {
+		EventId     uint      `json:"event_id"`
+		Title       string    `json:"title"`
+		Date        time.Time `json:"date"`
+		Location    string    `json:"location"`
+		Description string    `json:"description"`
+	}
+	var response []ResponseEvent
+	for _, event := range events {
+		response = append(response, ResponseEvent{
+			EventId:     event.EventId,
+			Title:       event.Title,
+			Date:        event.Date,
+			Location:    event.Location,
+			Description: event.Description,
+		})
+	}
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(events)
+	json.NewEncoder(w).Encode(response)
 }

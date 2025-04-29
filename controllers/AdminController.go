@@ -245,8 +245,20 @@ func AddReward(w http.ResponseWriter, r *http.Request) {
 	}
 	points := student.Points + uint(request.Points)
 	database.DB.Model(&student).Where("student_id", IdStudent).Update("points", points)
+	type responseReward struct {
+		EventID   uint `json:"event_id"`
+		Place     int  `json:"place"`
+		Points    int  `json:"points"`
+		StudentID uint `json:"student_id"`
+	}
+	response := responseReward{
+		EventID:   reward.EventID,
+		Place:     request.Place,
+		Points:    request.Points,
+		StudentID: reward.StudentID,
+	}
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(reward)
+	json.NewEncoder(w).Encode(response)
 }
 func ChangeStatusStudent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
@@ -292,8 +304,60 @@ func ChangeStatusStudent(w http.ResponseWriter, r *http.Request) {
 	}
 	eventParticipant.EventID = uint(EventID)
 	eventParticipant.StudentID = uint(StudentId)
+	if err := database.DB.
+		Preload("Student").
+		Preload("Event").
+		Where("student_id = ? AND event_id = ?", StudentId, EventID).
+		First(&eventParticipant).Error; err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	type ResponseStatus struct {
+		Status  models.StatusStudent
+		Student struct {
+			StudentId uint   `json:"id"`
+			Name      string `json:"name"`
+			LastName  string `json:"last_name"`
+			Faculty   string `json:"faculty"`
+		}
+		Event struct {
+			EventID     uint      `json:"event_id"`
+			Title       string    `json:"title"`
+			Location    string    `json:"location"`
+			Description string    `json:"description"`
+			Date        time.Time `json:"date"`
+		}
+	}
+	response := ResponseStatus{
+		Status: request.Status,
+		Student: struct {
+			StudentId uint   `json:"id"`
+			Name      string `json:"name"`
+			LastName  string `json:"last_name"`
+			Faculty   string `json:"faculty"`
+		}{
+			StudentId: eventParticipant.StudentID,
+			Name:      eventParticipant.Student.Name,
+			LastName:  eventParticipant.Student.LastName,
+			Faculty:   eventParticipant.Student.Faculty,
+		},
+		Event: struct {
+			EventID     uint      `json:"event_id"`
+			Title       string    `json:"title"`
+			Location    string    `json:"location"`
+			Description string    `json:"description"`
+			Date        time.Time `json:"date"`
+		}{
+			EventID:     eventParticipant.EventID,
+			Title:       eventParticipant.Event.Title,
+			Location:    eventParticipant.Event.Location,
+			Description: eventParticipant.Event.Description,
+			Date:        eventParticipant.Event.Date,
+		},
+	}
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(eventParticipant)
+	json.NewEncoder(w).Encode(response)
 }
 func DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
